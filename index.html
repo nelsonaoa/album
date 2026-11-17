@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>１０３小時光</title>
+  <!-- 引入 Google Identity Services (GIS) SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    *
+    {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body
+    {
+      width: 100%;
+      height: 100%;
+      background-color: #000000;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* 標題：左上角精緻膠囊造型 */
+    header
+    {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      padding: 8px 16px;
+      border-radius: 20px;
+      color: #ffffff;
+      z-index: 200;
+      pointer-events: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    header h1
+    {
+      font-size: 0.95rem;
+      font-weight: 400;
+      letter-spacing: 1px;
+    }
+
+    #loading
+    {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ffffff;
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+      z-index: 250;
+    }
+
+    /* 登入與權限提示卡片共用樣式 */
+    .auth-card-container
+    {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(26, 26, 26, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 35px 30px;
+      border-radius: 16px;
+      text-align: center;
+      color: #ffffff;
+      max-width: 380px;
+      width: 90%;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      z-index: 300;
+    }
+
+    .card-icon
+    {
+      font-size: 40px;
+      margin-bottom: 15px;
+    }
+
+    .card-title
+    {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .card-desc
+    {
+      font-size: 0.9rem;
+      color: #bbb;
+      line-height: 1.5;
+      margin-bottom: 25px;
+    }
+
+    .gis-btn-wrapper
+    {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .switch-account-btn
+    {
+      display: inline-block;
+      width: 100%;
+      padding: 12px 0;
+      background-color: #0d6efd;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: background-color 0.2s ease;
+      cursor: pointer;
+    }
+
+    .switch-account-btn:hover
+    {
+      background-color: #0b5ed7;
+    }
+
+    /* 左側縮圖欄位 (Sidebar) */
+    .thumb-sidebar
+    {
+      position: fixed;
+      top: 70px;
+      left: 20px;
+      bottom: 30px;
+      width: 80px;
+      overflow-y: auto;
+      z-index: 150;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      padding-right: 5px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+    }
+
+    .thumb-sidebar::-webkit-scrollbar
+    {
+      width: 4px;
+    }
+
+    .thumb-sidebar::-webkit-scrollbar-thumb
+    {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+    }
+
+    .thumb-item
+    {
+      width: 70px;
+      height: 70px;
+      min-height: 70px;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      opacity: 0.5;
+      transition: all 0.2s ease;
+      border: 2px solid transparent;
+      background-color: #1a1a1a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #666;
+      font-size: 12px;
+    }
+
+    .thumb-item:hover
+    {
+      opacity: 0.85;
+      transform: scale(1.05);
+    }
+
+    .thumb-item.active
+    {
+      opacity: 1;
+      border-color: #ffffff;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+      transform: scale(1.05);
+    }
+
+    .thumb-item img
+    {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    /* 上下箭頭提示 */
+    .scroll-hint
+    {
+      position: fixed;
+      bottom: 30px;
+      right: 25px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 1.2rem;
+      z-index: 100;
+      pointer-events: none;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 8px 10px;
+      border-radius: 15px;
+      animation: bounce 2s infinite;
+      transition: opacity 0.5s ease;
+    }
+
+    @keyframes bounce
+    {
+      0%, 20%, 50%, 80%, 100%
+      {
+        transform: translateY(0);
+      }
+      40%
+      {
+        transform: translateY(-8px);
+      }
+      60%
+      {
+        transform: translateY(-4px);
+      }
+    }
+
+    /* 全螢幕直向滾動容器 */
+    .gallery-container
+    {
+      width: 100vw;
+      height: 100vh;
+      overflow-y: scroll;
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+      display: none;
+      cursor: grab;
+    }
+
+    .gallery-container:active
+    {
+      cursor: grabbing;
+    }
+
+    .gallery-container::-webkit-scrollbar
+    {
+      display: none;
+    }
+
+    .gallery-container
+    {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* 每張照片的全螢幕區塊 */
+    .photo-slide
+    {
+      width: 100vw;
+      height: 100vh;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      color: #888;
+      font-size: 0.95rem;
+    }
+
+    .photo-slide img
+    {
+      max-width: calc(100vw - 160px);
+      max-height: calc(100vh - 120px);
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      user-select: none;
+      -webkit-user-drag: none;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>１０３小時光</h1>
+  </header>
+
+  <!-- 左側縮圖欄位 -->
+  <div id="thumbSidebar" class="thumb-sidebar"></div>
+
+  <!-- 上下箭頭提示 -->
+  <div id="scrollHint" class="scroll-hint">
+    <span>▲</span>
+    <span>▼</span>
+  </div>
+
+  <!-- 載入狀態提示 -->
+  <div id="loading">驗證身分中...</div>
+
+  <!-- 步驟 1：Google 登入卡片 -->
+  <div id="loginCard" class="auth-card-container" style="display: block;">
+    <div class="card-icon">📸</div>
+    <div class="card-title">私人相簿存取驗證</div>
+    <div class="card-desc">請使用授權名單內的 Google 帳號登入以瀏覽相簿內容。</div>
+    <div id="googleSignInBtn" class="gis-btn-wrapper"></div>
+  </div>
+
+  <!-- 步驟 2：權限不足提示卡片 -->
+  <div id="noAccessCard" class="auth-card-container">
+    <div class="card-icon">🔒</div>
+    <div class="card-title">無此相簿瀏覽權限</div>
+    <div id="noAccessMsg" class="card-desc">當前登入的 Google 帳號沒有讀取此相簿的權限，請切換至有權限的帳號。</div>
+    <button class="switch-account-btn" onclick="resetAndSwitchAccount()">🔄 切換其他帳號登入</button>
+  </div>
+
+  <!-- 主相簿容器 -->
+  <div id="gallery" class="gallery-container"></div>
+
+  <script>
+    // ==========================================
+    // ⚙️ 設定區：請填入你的專案設定
+    // ==========================================
+    const GAS_API_URL = "請貼上你的_GAS_WEB_APP_網址"; 
+    const GOOGLE_CLIENT_ID = "請貼上你的_GOOGLE_OAUTH_CLIENT_ID";
+    const ALBUM_NAME = "103"; // 對應 router.gs 的 album 參數
+
+    // 全域狀態變數
+    let currentIdToken = "";
+    const loadedCache = {}; // 避免重複向 GAS 請求同一張圖 (key: fileId_size)
+
+    // 初始化 Google 登入按鈕
+    window.onload = function()
+    {
+      if(typeof google !== "undefined" && google.accounts)
+      {
+        google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleCredentialResponse
+        });
+
+        google.accounts.id.renderButton(
+          document.getElementById("googleSignInBtn"),
+          { theme: "filled_blue", size: "large", shape: "pill", width: 250 }
+        );
+      }
+      else
+      {
+        alert("Google 登入元件載入失敗，請檢查網路連線。");
+      }
+    };
+
+    /**
+     * 統一呼叫 GAS doPost API 的封裝函式
+     */
+    async function callGasApi(payload)
+    {
+      const response = await fetch(GAS_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8" // 使用 text/plain 可避開 CORS 預檢 (OPTIONS) 錯誤
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if(!response.ok)
+      {
+        throw new Error("HTTP 錯誤狀態: " + response.status);
+      }
+
+      return await response.json();
+    }
+
+    /**
+     * Google 登入成功回呼
+     */
+    async function handleCredentialResponse(response)
+    {
+      currentIdToken = response.credential;
+
+      document.getElementById("loginCard").style.display = "none";
+      document.getElementById("noAccessCard").style.display = "none";
+      const loadingEl = document.getElementById("loading");
+      loadingEl.textContent = "驗證白名單權限中...";
+      loadingEl.style.display = "block";
+
+      try
+      {
+        // 1. 驗證白名單
+        const verifyRes = await callGasApi({
+          action: "verifyUser",
+          idToken: currentIdToken,
+          album: ALBUM_NAME
+        });
+
+        if(!verifyRes.success)
+        {
+          loadingEl.style.display = "none";
+          document.getElementById("noAccessMsg").textContent = verifyRes.message || "您的帳號未在授權名單中。";
+          document.getElementById("noAccessCard").style.display = "block";
+          return;
+        }
+
+        // 2. 驗證通過，向 GAS 取得相簿媒體清單
+        loadingEl.textContent = "讀取相簿清單中...";
+        const listRes = await callGasApi({
+          action: "getPhotoList",
+          idToken: currentIdToken,
+          album: ALBUM_NAME
+        });
+
+        loadingEl.style.display = "none";
+
+        if(!listRes.success)
+        {
+          alert("讀取清單失敗: " + listRes.message);
+          return;
+        }
+
+        renderGallery(listRes.items || []);
+      }
+      catch(err)
+      {
+        loadingEl.style.display = "none";
+        alert("連線發生錯誤: " + err.message);
+        document.getElementById("loginCard").style.display = "block";
+      }
+    }
+
+    /**
+     * 切換帳號（清除自動登入狀態並重新顯示登入卡片）
+     */
+    function resetAndSwitchAccount()
+    {
+      currentIdToken = "";
+      if(typeof google !== "undefined" && google.accounts)
+      {
+        google.accounts.id.disableAutoSelect();
+      }
+      document.getElementById("noAccessCard").style.display = "none";
+      document.getElementById("loginCard").style.display = "block";
+    }
+
+    /**
+     * 渲染相簿骨架並掛載懶加載監聽器 (IntersectionObserver)
+     */
+    function renderGallery(items)
+    {
+      const gallery = document.getElementById("gallery");
+      const sidebar = document.getElementById("thumbSidebar");
+      gallery.innerHTML = "";
+      sidebar.innerHTML = "";
+
+      if(items.length === 0)
+      {
+        gallery.style.display = "block";
+        gallery.innerHTML = "<div class='photo-slide' style='color:#fff;'>資料夾內沒有支援的媒體檔案</div>";
+        return;
+      }
+
+      // 建立主畫面懶加載觀察器（提早 1 個螢幕高度開始預載，滑動更順暢）
+      const mainObserver = new IntersectionObserver(function(entries, observer)
+      {
+        entries.forEach(function(entry)
+        {
+          if(entry.isIntersecting)
+          {
+            const slideEl = entry.target;
+            const fileId = slideEl.getAttribute("data-id");
+            const mediaType = slideEl.getAttribute("data-type");
+
+            loadMainMedia(slideEl, fileId, mediaType);
+            observer.unobserve(slideEl); // 觸發載入後即解除觀察
+          }
+        });
+      }, { root: gallery, rootMargin: "100% 0px 100% 0px" });
+
+      // 建立側邊欄縮圖懶加載觀察器
+      const thumbObserver = new IntersectionObserver(function(entries, observer)
+      {
+        entries.forEach(function(entry)
+        {
+          if(entry.isIntersecting)
+          {
+            const thumbEl = entry.target;
+            const fileId = thumbEl.getAttribute("data-id");
+            const mediaType = thumbEl.getAttribute("data-type");
+
+            loadSideThumb(thumbEl, fileId, mediaType);
+            observer.unobserve(thumbEl);
+          }
+        });
+      }, { root: sidebar, rootMargin: "200px 0px 200px 0px" });
+
+      // 依序建立佔位 DOM
+      for(let i = 0; i < items.length; i++)
+      {
+        const item = items[i];
+
+        // 1. 主畫面佔位 Slide
+        const slide = document.createElement("div");
+        slide.className = "photo-slide";
+        slide.id = "slide-" + i;
+        slide.setAttribute("data-id", item.id);
+        slide.setAttribute("data-type", item.type);
+        slide.textContent = "載入中...";
+        gallery.appendChild(slide);
+        mainObserver.observe(slide);
+
+        // 2. 左側縮圖佔位 Item
+        const thumb = document.createElement("div");
+        thumb.className = "thumb-item" + (i === 0 ? " active" : "");
+        thumb.id = "thumb-" + i;
+        thumb.setAttribute("data-index", i);
+        thumb.setAttribute("data-id", item.id);
+        thumb.setAttribute("data-type", item.type);
+        thumb.textContent = (i + 1);
+
+        thumb.addEventListener("click", function()
+        {
+          const idx = this.getAttribute("data-index");
+          const targetSlide = document.getElementById("slide-" + idx);
+          if(targetSlide)
+          {
+            targetSlide.scrollIntoView({ behavior: "smooth" });
+          }
+        });
+
+        sidebar.appendChild(thumb);
+        thumbObserver.observe(thumb);
+      }
+
+      gallery.style.display = "block";
+      sidebar.style.display = "flex";
+      document.getElementById("scrollHint").style.display = "flex";
+
+      bindScrollAndDragEvents(gallery, sidebar);
+    }
+
+    /**
+     * 非同步向 GAS 取得大圖 Base64 (1600px)
+     */
+    async function loadMainMedia(slideEl, fileId, mediaType)
+    {
+      if(mediaType === "video")
+      {
+        slideEl.innerHTML = "<div style='text-align:center;color:#aaa;'>🎬 私有影片不支援直接 Base64 預覽<br><small>(檔案 ID: " + fileId + ")</small></div>";
+        return;
+      }
+
+      const cacheKey = fileId + "_1600";
+      if(loadedCache[cacheKey])
+      {
+        renderImageToSlide(slideEl, loadedCache[cacheKey]);
+        return;
+      }
+
+      try
+      {
+        const res = await callGasApi({
+          action: "getThumbnailBase64",
+          idToken: currentIdToken,
+          fileId: fileId,
+          size: 1600
+        });
+
+        if(res.success && res.dataUrl)
+        {
+          loadedCache[cacheKey] = res.dataUrl;
+          renderImageToSlide(slideEl, res.dataUrl);
+        }
+        else
+        {
+          slideEl.textContent = "圖片載入失敗: " + (res.message || "未知錯誤");
+        }
+      }
+      catch(err)
+      {
+        slideEl.textContent = "連線逾時，無法載入圖片";
+      }
+    }
+
+    function renderImageToSlide(slideEl, dataUrl)
+    {
+      slideEl.textContent = "";
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      img.alt = "";
+      slideEl.appendChild(img);
+    }
+
+    /**
+     * 非同步向 GAS 取得側邊欄小縮圖 Base64 (150px)
+     */
+    async function loadSideThumb(thumbEl, fileId, mediaType)
+    {
+      if(mediaType === "video")
+      {
+        thumbEl.innerHTML = "<span style='color:#fff;font-size:20px;'>🎬</span>";
+        return;
+      }
+
+      const cacheKey = fileId + "_150";
+      if(loadedCache[cacheKey])
+      {
+        renderImageToThumb(thumbEl, loadedCache[cacheKey]);
+        return;
+      }
+
+      try
+      {
+        const res = await callGasApi({
+          action: "getThumbnailBase64",
+          idToken: currentIdToken,
+          fileId: fileId,
+          size: 150
+        });
+
+        if(res.success && res.dataUrl)
+        {
+          loadedCache[cacheKey] = res.dataUrl;
+          renderImageToThumb(thumbEl, res.dataUrl);
+        }
+      }
+      catch(err)
+      {
+        // 縮圖失敗維持編號顯示即可，不干擾畫面
+      }
+    }
+
+    function renderImageToThumb(thumbEl, dataUrl)
+    {
+      thumbEl.textContent = "";
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      img.alt = "";
+      thumbEl.appendChild(img);
+    }
+
+    /**
+     * 綁定滾動焦點切換與 PC 滑鼠拖曳滑動事件
+     */
+    function bindScrollAndDragEvents(gallery, sidebar)
+    {
+      gallery.addEventListener("scroll", function()
+      {
+        const hint = document.getElementById("scrollHint");
+        if(gallery.scrollTop > 50)
+        {
+          hint.style.opacity = "0";
+        }
+        else
+        {
+          hint.style.opacity = "1";
+        }
+
+        const currentIndex = Math.round(gallery.scrollTop / window.innerHeight);
+        const activeThumb = sidebar.querySelector(".thumb-item.active");
+        const newActiveThumb = document.getElementById("thumb-" + currentIndex);
+
+        if(newActiveThumb && activeThumb !== newActiveThumb)
+        {
+          if(activeThumb)
+          {
+            activeThumb.classList.remove("active");
+          }
+          newActiveThumb.classList.add("active");
+          newActiveThumb.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      });
+
+      let isMouseDown = false;
+      let startY = 0;
+      let scrollTop = 0;
+
+      gallery.addEventListener("mousedown", function(e)
+      {
+        if(e.target.closest(".thumb-sidebar") || e.target.tagName === "VIDEO")
+        {
+          return;
+        }
+
+        isMouseDown = true;
+        gallery.style.scrollSnapType = "none";
+        gallery.style.scrollBehavior = "auto";
+        startY = e.pageY - gallery.offsetTop;
+        scrollTop = gallery.scrollTop;
+      });
+
+      gallery.addEventListener("mouseleave", function()
+      {
+        if(isMouseDown)
+        {
+          endDrag();
+        }
+      });
+
+      gallery.addEventListener("mouseup", function()
+      {
+        if(isMouseDown)
+        {
+          endDrag();
+        }
+      });
+
+      gallery.addEventListener("mousemove", function(e)
+      {
+        if(!isMouseDown)
+        {
+          return;
+        }
+        e.preventDefault();
+        const y = e.pageY - gallery.offsetTop;
+        const walk = (y - startY) * 1.5;
+        gallery.scrollTop = scrollTop - walk;
+      });
+
+      function endDrag()
+      {
+        isMouseDown = false;
+        gallery.style.scrollSnapType = "y mandatory";
+        gallery.style.scrollBehavior = "smooth";
+      }
+    }
+  </script>
+</body>
+</html>
