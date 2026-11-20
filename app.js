@@ -180,7 +180,7 @@ function renderGallery(items)
         observer.unobserve(slideEl);
       }
     });
-  }, { root: gallery, rootMargin: "100% 0px 100% 0px" });
+  }, { root: gallery, rootMargin: "30% 0px 30% 0px" });
 
   const thumbObserver = new IntersectionObserver(function(entries, observer)
   {
