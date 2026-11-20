@@ -3,11 +3,14 @@
 // ==========================================
 const GOOGLE_CLIENT_ID = "41397361871-ieh71tib6jg1a8g6tnpn2fdbh1ncdkt6.apps.googleusercontent.com";
 const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzH6vJyfnsB32uh8ybMZ2E2fFSUDBuSD9CJGekBIX6flMDI4iSmKMvOi-wqO5JLmTn0ZQ/exec";
-const ALBUM_NAME = "103"; // 對應 router.gs 的 album 參數
+
+const urlParams = new URLSearchParams(window.location.search);
+const ALBUM_NAME = urlParams.get("album") || "103";
 
 // 全域狀態變數
 let currentIdToken = "";
-const loadedCache = {}; // 避免重複向 GAS 請求同一張圖 (key: fileId_size)
+let currentUserRole = "guest"; // "admin" | "student" | "parent"
+const loadedCache = {};
 
 // 初始化 Google 登入按鈕
 window.onload = function()
@@ -26,9 +29,31 @@ window.onload = function()
   }
   else
   {
-    alert("Google 登入元件載入失敗，請檢查網路連線。");
+    showToast("Google 登入元件載入失敗，請檢查網路連線");
   }
 };
+
+/**
+ * 右上角非干擾提示訊息 (Toast)
+ */
+function showToast(msg)
+{
+  let toast = document.getElementById("toastMsg");
+  if(!toast)
+  {
+    toast = document.createElement("div");
+    toast.id = "toastMsg";
+    toast.className = "toast-msg";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(function()
+  {
+    toast.classList.remove("show");
+  }, 2600);
+}
 
 /**
  * 統一呼叫 GAS doPost API 的封裝函式
@@ -66,7 +91,7 @@ async function handleCredentialResponse(response)
 
   try
   {
-    // 1. 驗證白名單
+    // 1. 驗證白名單與角色
     const verifyRes = await callGasApi({
       action: "verifyUser",
       idToken: currentIdToken,
@@ -81,6 +106,8 @@ async function handleCredentialResponse(response)
       return;
     }
 
+    currentUserRole = verifyRes.role || "parent";
+
     // 2. 驗證通過，向 GAS 取得相簿媒體清單
     loadingEl.textContent = "讀取相簿清單中...";
     const listRes = await callGasApi({
@@ -93,7 +120,7 @@ async function handleCredentialResponse(response)
 
     if(!listRes.success)
     {
-      alert("讀取清單失敗: " + listRes.message);
+      showToast("讀取清單失敗: " + listRes.message);
       return;
     }
 
@@ -102,17 +129,18 @@ async function handleCredentialResponse(response)
   catch(err)
   {
     loadingEl.style.display = "none";
-    alert("連線發生錯誤: " + err.message);
+    showToast("連線發生錯誤: " + err.message);
     document.getElementById("loginCard").style.display = "block";
   }
 }
 
 /**
- * 切換帳號（清除自動登入狀態並重新顯示登入卡片）
+ * 切換帳號
  */
 function resetAndSwitchAccount()
 {
   currentIdToken = "";
+  currentUserRole = "guest";
   if(typeof google !== "undefined" && google.accounts)
   {
     google.accounts.id.disableAutoSelect();
@@ -122,7 +150,7 @@ function resetAndSwitchAccount()
 }
 
 /**
- * 渲染相簿骨架並掛載懶加載監聽器 (IntersectionObserver)
+ * 渲染相簿骨架並掛載懶加載監聽器
  */
 function renderGallery(items)
 {
@@ -134,11 +162,10 @@ function renderGallery(items)
   if(items.length === 0)
   {
     gallery.style.display = "block";
-    gallery.innerHTML = "<div class='photo-slide' style='color:#fff;'>資料夾內沒有支援的媒體檔案</div>";
+    gallery.innerHTML = "<div class='photo-slide' style='color:#fff;'>資料夾內沒有可瀏覽的媒體檔案</div>";
     return;
   }
 
-  // 建立主畫面懶加載觀察器（提早 1 個螢幕高度開始預載，滑動更順暢）
   const mainObserver = new IntersectionObserver(function(entries, observer)
   {
     entries.forEach(function(entry)
@@ -155,7 +182,6 @@ function renderGallery(items)
     });
   }, { root: gallery, rootMargin: "100% 0px 100% 0px" });
 
-  // 建立側邊欄縮圖懶加載觀察器
   const thumbObserver = new IntersectionObserver(function(entries, observer)
   {
     entries.forEach(function(entry)
@@ -172,24 +198,28 @@ function renderGallery(items)
     });
   }, { root: sidebar, rootMargin: "200px 0px 200px 0px" });
 
-  // 依序建立佔位 DOM
+  const canSeeLimitStyle = (currentUserRole === "admin" || currentUserRole === "student");
+
   for(let i = 0; i < items.length; i++)
   {
     const item = items[i];
+    const isLimit = Boolean(item.isLimit);
 
     // 1. 主畫面佔位 Slide
     const slide = document.createElement("div");
-    slide.className = "photo-slide";
+    slide.className = "photo-slide" + ((canSeeLimitStyle && isLimit) ? " is-limit" : "");
     slide.id = "slide-" + i;
+    slide.setAttribute("data-index", i);
     slide.setAttribute("data-id", item.id);
     slide.setAttribute("data-type", item.type);
+    slide.setAttribute("data-limit", isLimit ? "1" : "0");
     slide.textContent = "載入中...";
     gallery.appendChild(slide);
     mainObserver.observe(slide);
 
     // 2. 左側縮圖佔位 Item
     const thumb = document.createElement("div");
-    thumb.className = "thumb-item" + (i === 0 ? " active" : "");
+    thumb.className = "thumb-item" + (i === 0 ? " active" : "") + ((canSeeLimitStyle && isLimit) ? " is-limit" : "");
     thumb.id = "thumb-" + i;
     thumb.setAttribute("data-index", i);
     thumb.setAttribute("data-id", item.id);
@@ -260,13 +290,106 @@ async function loadMainMedia(slideEl, fileId, mediaType)
   }
 }
 
+/**
+ * 渲染主圖片，若為 admin 則在圖片右上角加上鎖定按鈕
+ */
 function renderImageToSlide(slideEl, dataUrl)
 {
   slideEl.textContent = "";
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "media-wrapper";
+
   const img = document.createElement("img");
   img.src = dataUrl;
   img.alt = "";
-  slideEl.appendChild(img);
+  wrapper.appendChild(img);
+
+  // Admin 專用：每張照片旁邊加上鎖的按鈕
+  if(currentUserRole === "admin")
+  {
+    const isLimit = (slideEl.getAttribute("data-limit") === "1");
+    const lockBtn = document.createElement("button");
+    lockBtn.className = "admin-lock-btn" + (isLimit ? " locked" : "");
+    lockBtn.title = isLimit ? "點擊解除家長限制 (_limit)" : "點擊設為家長限制 (_limit)";
+    lockBtn.textContent = isLimit ? "🔒" : "🔓";
+
+    lockBtn.addEventListener("click", function(e)
+    {
+      e.stopPropagation();
+      handleToggleLimit(slideEl, lockBtn);
+    });
+
+    wrapper.appendChild(lockBtn);
+  }
+
+  slideEl.appendChild(wrapper);
+}
+
+/**
+ * Admin 點擊鎖按鈕：呼叫 GAS 切換檔名 "_limit" 並即時更新綠框與圖示
+ */
+async function handleToggleLimit(slideEl, lockBtn)
+{
+  const fileId = slideEl.getAttribute("data-id");
+  const index = slideEl.getAttribute("data-index");
+  const thumbEl = document.getElementById("thumb-" + index);
+
+  lockBtn.disabled = true;
+  showToast("更新檔案限制狀態中...");
+
+  try
+  {
+    const res = await callGasApi({
+      action: "toggleLimit",
+      idToken: currentIdToken,
+      album: ALBUM_NAME,
+      fileId: fileId
+    });
+
+    if(res.success)
+    {
+      const nowLimit = Boolean(res.isLimit);
+      slideEl.setAttribute("data-limit", nowLimit ? "1" : "0");
+
+      if(nowLimit)
+      {
+        slideEl.classList.add("is-limit");
+        if(thumbEl)
+        {
+          thumbEl.classList.add("is-limit");
+        }
+        lockBtn.classList.add("locked");
+        lockBtn.textContent = "🔒";
+        lockBtn.title = "點擊解除家長限制 (_limit)";
+        showToast("已設為家長隱藏：" + res.newName);
+      }
+      else
+      {
+        slideEl.classList.remove("is-limit");
+        if(thumbEl)
+        {
+          thumbEl.classList.remove("is-limit");
+        }
+        lockBtn.classList.remove("locked");
+        lockBtn.textContent = "🔓";
+        lockBtn.title = "點擊設為家長限制 (_limit)";
+        showToast("已解除限制：" + res.newName);
+      }
+    }
+    else
+    {
+      showToast("操作失敗：" + (res.message || "未知錯誤"));
+    }
+  }
+  catch(err)
+  {
+    showToast("連線錯誤：" + err.message);
+  }
+  finally
+  {
+    lockBtn.disabled = false;
+  }
 }
 
 /**
@@ -355,7 +478,7 @@ function bindScrollAndDragEvents(gallery, sidebar)
 
   gallery.addEventListener("mousedown", function(e)
   {
-    if(e.target.closest(".thumb-sidebar") || e.target.tagName === "VIDEO")
+    if(e.target.closest(".thumb-sidebar") || e.target.closest(".admin-lock-btn") || e.target.tagName === "VIDEO")
     {
       return;
     }
